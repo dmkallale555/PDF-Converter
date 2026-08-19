@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import { 
   FileText, 
@@ -10,20 +10,37 @@ import {
   AlertCircle,
   ShieldCheck,
   Zap,
-  Info
+  Info,
+  ArrowRight,
+  LayoutDashboard,
+  LogIn
 } from 'lucide-react';
 import { Header } from './components/Header';
+import { Footer } from './components/Footer';
 import { Dropzone } from './components/Dropzone';
 import { SettingsPanel } from './components/SettingsPanel';
 import { PageGrid } from './components/PageGrid';
 import { PreviewModal } from './components/PreviewModal';
 import { ZipDownloadBar } from './components/ZipDownloadBar';
 import { PasswordModal } from './components/PasswordModal';
+import { AuthModal } from './components/AuthModal';
+import { ImageToPdfConverter } from './components/ImageToPdfConverter';
+import { ImageToImageConverter } from './components/ImageToImageConverter';
+import { BatchConverter } from './components/BatchConverter';
+import { UserDashboard } from './components/UserDashboard';
+import { HistoryView } from './components/HistoryView';
+import { AccountSettings } from './components/AccountSettings';
+import { AdminPanel } from './components/AdminPanel';
+
 import { 
   ConversionSettings, 
   LoadedPdf, 
   PageInfo,
-  ConversionProgress 
+  ConversionProgress,
+  AppRoute,
+  User,
+  ThemeMode,
+  ImageFormat
 } from './types';
 import { 
   loadPdfDocument, 
@@ -36,6 +53,8 @@ import {
   parsePageRange
 } from './utils/pdfRenderer';
 import { createSamplePdf } from './utils/samplePdfs';
+import { getCurrentUser, logoutUser } from './utils/authStorage';
+import { addConversionRecord } from './utils/historyStorage';
 
 const DEFAULT_SETTINGS: ConversionSettings = {
   format: 'png',
@@ -50,6 +69,17 @@ const DEFAULT_SETTINGS: ConversionSettings = {
 };
 
 export default function App() {
+  // Navigation & User State
+  const [currentRoute, setCurrentRoute] = useState<AppRoute>('home');
+  const [user, setUser] = useState<User | null>(() => getCurrentUser());
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | null>(null);
+
+  // Theme State
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    return (localStorage.getItem('convertpro_theme') as ThemeMode) || 'system';
+  });
+
+  // PDF to Image State
   const [loadedPdf, setLoadedPdf] = useState<LoadedPdf | null>(null);
   const [settings, setSettings] = useState<ConversionSettings>(DEFAULT_SETTINGS);
   const [isLoadingPdf, setIsLoadingPdf] = useState(false);
@@ -65,6 +95,51 @@ export default function App() {
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const pendingBufferRef = useRef<{ buffer: ArrayBuffer; name: string } | null>(null);
+
+  // Synchronize theme with DOM
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else if (theme === 'light') {
+      root.classList.remove('dark');
+    } else {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (prefersDark) {
+        root.classList.add('dark');
+      } else {
+        root.classList.remove('dark');
+      }
+    }
+    localStorage.setItem('convertpro_theme', theme);
+  }, [theme]);
+
+  // Route specific format synchronization
+  useEffect(() => {
+    if (currentRoute === 'pdf-to-jpg') {
+      setSettings((prev) => ({ ...prev, format: 'jpeg' }));
+    } else if (currentRoute === 'pdf-to-png') {
+      setSettings((prev) => ({ ...prev, format: 'png' }));
+    } else if (currentRoute === 'pdf-to-webp') {
+      setSettings((prev) => ({ ...prev, format: 'webp' }));
+    } else if (currentRoute === 'pdf-to-tiff') {
+      setSettings((prev) => ({ ...prev, format: 'tiff' }));
+    } else if (currentRoute === 'pdf-to-bmp') {
+      setSettings((prev) => ({ ...prev, format: 'bmp' }));
+    }
+  }, [currentRoute]);
+
+  const handleToggleTheme = (newTheme: ThemeMode) => {
+    setTheme(newTheme);
+  };
+
+  const handleLogout = () => {
+    logoutUser();
+    setUser(null);
+    if (currentRoute === 'dashboard' || currentRoute === 'settings' || currentRoute === 'admin') {
+      setCurrentRoute('home');
+    }
+  };
 
   /**
    * Load PDF buffer and extract page information
@@ -92,7 +167,7 @@ export default function App() {
       setIsPasswordModalOpen(false);
       pendingBufferRef.current = null;
 
-      // Asynchronously render thumbnails in background
+      // Render thumbnails in background
       renderAllThumbnails(pdfDoc, pages);
     } catch (err: any) {
       console.error('Error loading PDF:', err);
@@ -111,7 +186,7 @@ export default function App() {
   };
 
   /**
-   * Render fast preview thumbnails for all pages
+   * Render preview thumbnails for all pages
    */
   const renderAllThumbnails = async (pdfDoc: any, pages: PageInfo[]) => {
     for (const page of pages) {
@@ -146,109 +221,6 @@ export default function App() {
   };
 
   /**
-   * File drop / pick handler
-   */
-  const handleFileLoaded = (file: File, buffer: ArrayBuffer) => {
-    handleLoadPdf(file.name, buffer);
-  };
-
-  /**
-   * Update Settings
-   */
-  const handleUpdateSettings = (newSettings: Partial<ConversionSettings>) => {
-    setSettings((prev) => ({ ...prev, ...newSettings }));
-  };
-
-  /**
-   * Toggle individual page selection
-   */
-  const handleTogglePage = (pageNumber: number) => {
-    setLoadedPdf((prev) => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        pages: prev.pages.map((p) =>
-          p.pageNumber === pageNumber ? { ...p, selected: !p.selected } : p
-        ),
-      };
-    });
-  };
-
-  /**
-   * Bulk selection filters
-   */
-  const handleSelectAll = () => {
-    setLoadedPdf((prev) => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        pages: prev.pages.map((p) => ({ ...p, selected: true })),
-      };
-    });
-  };
-
-  const handleDeselectAll = () => {
-    setLoadedPdf((prev) => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        pages: prev.pages.map((p) => ({ ...p, selected: false })),
-      };
-    });
-  };
-
-  const handleSelectFilter = (filter: 'all' | 'odd' | 'even' | 'first') => {
-    setLoadedPdf((prev) => {
-      if (!prev) return null;
-      const targetSet = parsePageRange(filter, prev.totalPages);
-      return {
-        ...prev,
-        pages: prev.pages.map((p) => ({ ...p, selected: targetSet.has(p.pageNumber) })),
-      };
-    });
-  };
-
-  /**
-   * Rotate single page
-   */
-  const handleRotatePage = async (pageNumber: number) => {
-    if (!loadedPdf) return;
-    const targetPage = loadedPdf.pages.find((p) => p.pageNumber === pageNumber);
-    if (!targetPage) return;
-
-    const newRotation = (targetPage.userRotation + 90) % 360;
-
-    // Update state and clear rendered preview so it re-renders at new rotation
-    setLoadedPdf((prev) => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        pages: prev.pages.map((p) =>
-          p.pageNumber === pageNumber
-            ? { ...p, userRotation: newRotation, renderedBlob: undefined, renderedUrl: undefined }
-            : p
-        ),
-      };
-    });
-
-    // Re-render thumbnail
-    try {
-      const thumb = await renderPageThumbnail(loadedPdf.pdfDocument, pageNumber, newRotation);
-      setLoadedPdf((prev) => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          pages: prev.pages.map((p) =>
-            p.pageNumber === pageNumber ? { ...p, thumbnailUrl: thumb } : p
-          ),
-        };
-      });
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  /**
    * High-Resolution Render All Selected Pages
    */
   const handleApplyConversion = async () => {
@@ -262,6 +234,8 @@ export default function App() {
       total: selectedPages.length,
       currentPageNumber: selectedPages[0]?.pageNumber,
     });
+
+    let totalOutputBytes = 0;
 
     for (let i = 0; i < selectedPages.length; i++) {
       const page = selectedPages[i];
@@ -289,6 +263,8 @@ export default function App() {
           settings,
           page.userRotation
         );
+
+        totalOutputBytes += res.size;
 
         setLoadedPdf((prev) => {
           if (!prev) return null;
@@ -334,7 +310,19 @@ export default function App() {
     setIsConverting(false);
     setConversionProgress(null);
 
-    // Light celebratory feedback
+    // Save record to history
+    addConversionRecord({
+      userId: user?.id,
+      originalFilename: loadedPdf.name,
+      inputFormat: 'pdf',
+      outputFormat: settings.format,
+      inputSize: loadedPdf.size,
+      outputSize: totalOutputBytes || loadedPdf.size,
+      pageCount: selectedPages.length,
+      dpi: settings.dpi,
+      status: 'completed',
+    });
+
     confetti({
       particleCount: 40,
       spread: 60,
@@ -353,7 +341,6 @@ export default function App() {
 
     let blob = page.renderedBlob;
     if (!blob) {
-      // Render on demand if not pre-rendered
       const res = await renderPageToImage(
         loadedPdf.pdfDocument,
         pageNumber,
@@ -364,7 +351,7 @@ export default function App() {
     }
 
     const baseName = loadedPdf.name.replace(/\.pdf$/i, '');
-    const ext = settings.format === 'png' ? 'png' : 'jpg';
+    const ext = settings.format === 'jpeg' ? 'jpg' : settings.format;
     const filename = `${baseName}_page_${String(pageNumber).padStart(2, '0')}_${settings.dpi}dpi.${ext}`;
 
     downloadFile(blob, filename);
@@ -436,16 +423,34 @@ export default function App() {
     }
   };
 
-  /**
-   * Reset / Clear Document
-   */
+  const handleExternalConversionComplete = (record: {
+    originalFilename: string;
+    inputFormat: string;
+    outputFormat: string;
+    inputSize: number;
+    outputSize: number;
+    pageCount?: number;
+    downloadUrl: string;
+    downloadFilename: string;
+  }) => {
+    addConversionRecord({
+      userId: user?.id,
+      originalFilename: record.originalFilename,
+      inputFormat: record.inputFormat,
+      outputFormat: record.outputFormat,
+      inputSize: record.inputSize,
+      outputSize: record.outputSize,
+      pageCount: record.pageCount,
+      status: 'completed',
+    });
+  };
+
   const handleReset = () => {
     setLoadedPdf(null);
     setGlobalError(null);
     setInspectPageNumber(null);
   };
 
-  // Inspect Modal Navigation
   const inspectingPage = loadedPdf?.pages.find((p) => p.pageNumber === inspectPageNumber) || null;
   const currentInspectIndex = loadedPdf?.pages.findIndex((p) => p.pageNumber === inspectPageNumber) ?? -1;
   const hasPrevInspect = currentInspectIndex > 0;
@@ -465,100 +470,296 @@ export default function App() {
 
   const selectedCount = loadedPdf?.pages.filter((p) => p.selected).length || 0;
 
+  // Determine current active converter view
+  const isImageToPdfView = currentRoute === 'image-to-pdf' || currentRoute === 'jpg-to-pdf' || currentRoute === 'png-to-pdf';
+  const isImageToImageView = currentRoute === 'image-to-image' || currentRoute === 'jpg-to-png' || currentRoute === 'png-to-jpg';
+  const isBatchView = currentRoute === 'batch-converter';
+  const isDashboardView = currentRoute === 'dashboard';
+  const isHistoryView = currentRoute === 'history';
+  const isSettingsView = currentRoute === 'settings';
+  const isAdminView = currentRoute === 'admin';
+  const isPdfToImageView = !isImageToPdfView && !isImageToImageView && !isBatchView && !isDashboardView && !isHistoryView && !isSettingsView && !isAdminView;
+
   return (
-    <div className="min-h-screen bg-[#F9FAFB] flex flex-col text-gray-900 font-sans antialiased pb-28">
-      {/* Top Header */}
+    <div className="min-h-screen bg-[#F9FAFB] dark:bg-gray-900 flex flex-col text-gray-900 dark:text-gray-100 font-sans antialiased transition-colors">
+      
+      {/* Universal Top Header */}
       <Header
-        hasDocument={!!loadedPdf}
-        onReset={handleReset}
+        currentRoute={currentRoute}
+        onNavigate={setCurrentRoute}
+        user={user}
+        onOpenAuth={(mode) => setAuthModalMode(mode)}
+        onLogout={handleLogout}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
         onLoadSample={handleLoadSample}
-        isLoading={isLoadingPdf}
+        isLoadingSample={isLoadingPdf}
       />
 
-      {/* Main Content Area */}
+      {/* Main App Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
-        {/* Error Alert */}
+        {/* Global Error Banner */}
         {globalError && (
-          <div className="mb-6 p-4 rounded-2xl bg-red-50 border border-red-200 text-red-900 text-sm flex items-start gap-3 shadow-xs">
+          <div className="mb-6 p-4 rounded-2xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-900 dark:text-red-200 text-sm flex items-start gap-3 shadow-xs">
             <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
             <div>
               <p className="font-bold">Error encountered</p>
-              <p className="text-xs text-red-700 mt-0.5">{globalError}</p>
+              <p className="text-xs text-red-700 dark:text-red-300 mt-0.5">{globalError}</p>
             </div>
           </div>
         )}
 
-        {/* View State 1: No PDF loaded (Dropzone) */}
-        {!loadedPdf && (
-          <Dropzone
-            onFileLoaded={handleFileLoaded}
-            onLoadSample={handleLoadSample}
-            isLoading={isLoadingPdf}
+        {/* 1. PDF TO IMAGE CONVERTER VIEW */}
+        {isPdfToImageView && (
+          <div>
+            {!loadedPdf ? (
+              <Dropzone
+                onFileLoaded={(file, buffer) => handleLoadPdf(file.name, buffer)}
+                onLoadSample={handleLoadSample}
+                isLoading={isLoadingPdf}
+              />
+            ) : (
+              <div className="space-y-6">
+                {/* File Info Bar */}
+                <div className="bg-white dark:bg-gray-800 rounded-3xl border border-gray-200 dark:border-gray-700 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xs">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-11 h-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold shrink-0">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-extrabold text-gray-900 dark:text-white truncate max-w-md">
+                        {loadedPdf.name}
+                      </h2>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 font-medium mt-0.5">
+                        {loadedPdf.totalPages} {loadedPdf.totalPages === 1 ? 'Page' : 'Pages'} • {(loadedPdf.size / 1024).toFixed(1)} KB • PDF Document
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleReset}
+                      className="px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-700 text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    >
+                      Change PDF
+                    </button>
+                    <div className="px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-100 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-bold flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>100% In-Browser</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quality & Conversion Controls Panel */}
+                <SettingsPanel
+                  settings={settings}
+                  onChangeSettings={(s) => setSettings((prev) => ({ ...prev, ...s }))}
+                  loadedPdf={loadedPdf}
+                  onApplyConversion={handleApplyConversion}
+                  isConverting={isConverting}
+                  conversionProgress={conversionProgress}
+                  selectedCount={selectedCount}
+                />
+
+                {/* Page Grid */}
+                <PageGrid
+                  pages={loadedPdf.pages}
+                  settings={settings}
+                  onTogglePage={(pageNum) => {
+                    setLoadedPdf((prev) => {
+                      if (!prev) return null;
+                      return {
+                        ...prev,
+                        pages: prev.pages.map((p) =>
+                          p.pageNumber === pageNum ? { ...p, selected: !p.selected } : p
+                        ),
+                      };
+                    });
+                  }}
+                  onSelectAll={() => {
+                    setLoadedPdf((prev) => {
+                      if (!prev) return null;
+                      return {
+                        ...prev,
+                        pages: prev.pages.map((p) => ({ ...p, selected: true })),
+                      };
+                    });
+                  }}
+                  onDeselectAll={() => {
+                    setLoadedPdf((prev) => {
+                      if (!prev) return null;
+                      return {
+                        ...prev,
+                        pages: prev.pages.map((p) => ({ ...p, selected: false })),
+                      };
+                    });
+                  }}
+                  onSelectFilter={(filter) => {
+                    setLoadedPdf((prev) => {
+                      if (!prev) return null;
+                      const targetSet = parsePageRange(filter, prev.totalPages);
+                      return {
+                        ...prev,
+                        pages: prev.pages.map((p) => ({ ...p, selected: targetSet.has(p.pageNumber) })),
+                      };
+                    });
+                  }}
+                  onRotatePage={async (pageNum) => {
+                    if (!loadedPdf) return;
+                    const page = loadedPdf.pages.find((p) => p.pageNumber === pageNum);
+                    if (!page) return;
+                    const newRot = (page.userRotation + 90) % 360;
+
+                    setLoadedPdf((prev) => {
+                      if (!prev) return null;
+                      return {
+                        ...prev,
+                        pages: prev.pages.map((p) =>
+                          p.pageNumber === pageNum
+                            ? { ...p, userRotation: newRot, renderedBlob: undefined, renderedUrl: undefined }
+                            : p
+                        ),
+                      };
+                    });
+
+                    try {
+                      const thumb = await renderPageThumbnail(loadedPdf.pdfDocument, pageNum, newRot);
+                      setLoadedPdf((prev) => {
+                        if (!prev) return null;
+                        return {
+                          ...prev,
+                          pages: prev.pages.map((p) =>
+                            p.pageNumber === pageNum ? { ...p, thumbnailUrl: thumb } : p
+                          ),
+                        };
+                      });
+                    } catch (e) {
+                      console.error(e);
+                    }
+                  }}
+                  onDownloadPage={handleDownloadPage}
+                  onCopyPage={handleCopyPage}
+                  onInspectPage={(num) => setInspectPageNumber(num)}
+                  copiedPage={copiedPage}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 2. IMAGE TO PDF CONVERTER VIEW */}
+        {isImageToPdfView && (
+          <ImageToPdfConverter onConversionComplete={handleExternalConversionComplete} />
+        )}
+
+        {/* 3. IMAGE TO IMAGE CONVERTER VIEW */}
+        {isImageToImageView && (
+          <ImageToImageConverter
+            initialTargetFormat={
+              currentRoute === 'jpg-to-png' ? 'png' : currentRoute === 'png-to-jpg' ? 'jpg' : 'webp'
+            }
+            onConversionComplete={handleExternalConversionComplete}
           />
         )}
 
-        {/* View State 2: PDF Loaded (Settings + Page Grid) */}
-        {loadedPdf && (
-          <div className="space-y-6">
-            
-            {/* File Info Banner */}
-            <div className="bg-white rounded-2xl border border-gray-200 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
-              <div className="flex items-center gap-3.5">
-                <div className="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold shrink-0">
-                  <FileText className="w-5 h-5" />
+        {/* 4. BATCH MULTI-FILE CONVERTER VIEW */}
+        {isBatchView && (
+          <BatchConverter onConversionComplete={handleExternalConversionComplete} />
+        )}
+
+        {/* 5. USER DASHBOARD VIEW */}
+        {isDashboardView && (
+          <div>
+            {user ? (
+              <UserDashboard user={user} onNavigate={setCurrentRoute} />
+            ) : (
+              <div className="bg-white dark:bg-gray-800 rounded-3xl border border-gray-200 dark:border-gray-700 p-12 text-center max-w-md mx-auto space-y-4 shadow-2xs">
+                <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 mx-auto flex items-center justify-center">
+                  <LayoutDashboard className="w-7 h-7" />
                 </div>
-                <div>
-                  <h2 className="text-base font-extrabold text-gray-900 truncate max-w-md">
-                    {loadedPdf.name}
-                  </h2>
-                  <p className="text-xs text-gray-400 font-medium mt-0.5">
-                    {loadedPdf.totalPages} {loadedPdf.totalPages === 1 ? 'Page' : 'Pages'} • {(loadedPdf.size / 1024).toFixed(1)} KB • PDF Document
-                  </p>
-                </div>
+                <h3 className="text-lg font-extrabold text-gray-900 dark:text-white">
+                  Member Dashboard
+                </h3>
+                <p className="text-xs text-gray-400">
+                  Please sign in to access your personal dashboard, conversion analytics, and saved presets.
+                </p>
+                <button
+                  onClick={() => setAuthModalMode('login')}
+                  className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 transition-all flex items-center justify-center gap-2"
+                >
+                  <LogIn className="w-4 h-4" />
+                  <span>Sign In to Your Account</span>
+                </button>
               </div>
+            )}
+          </div>
+        )}
 
-              <div className="flex items-center gap-2">
-                <div className="px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs font-bold flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>100% In-Browser</span>
-                </div>
+        {/* 6. CONVERSION HISTORY VIEW */}
+        {isHistoryView && (
+          <HistoryView userId={user?.id} onNavigate={setCurrentRoute} />
+        )}
+
+        {/* 7. ACCOUNT SETTINGS VIEW */}
+        {isSettingsView && (
+          <div>
+            {user ? (
+              <AccountSettings
+                user={user}
+                onUpdateUser={setUser}
+                onLogout={handleLogout}
+                theme={theme}
+                onToggleTheme={handleToggleTheme}
+              />
+            ) : (
+              <div className="bg-white dark:bg-gray-800 rounded-3xl border border-gray-200 dark:border-gray-700 p-12 text-center max-w-md mx-auto space-y-4 shadow-2xs">
+                <h3 className="text-lg font-extrabold text-gray-900 dark:text-white">
+                  Account Settings
+                </h3>
+                <p className="text-xs text-gray-400">
+                  Please log in to manage your user profile and preferences.
+                </p>
+                <button
+                  onClick={() => setAuthModalMode('login')}
+                  className="px-6 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold"
+                >
+                  Sign In
+                </button>
               </div>
-            </div>
+            )}
+          </div>
+        )}
 
-            {/* Quality & Conversion Controls Panel */}
-            <SettingsPanel
-              settings={settings}
-              onChangeSettings={handleUpdateSettings}
-              loadedPdf={loadedPdf}
-              onApplyConversion={handleApplyConversion}
-              isConverting={isConverting}
-              conversionProgress={conversionProgress}
-              selectedCount={selectedCount}
-            />
-
-            {/* Page Grid */}
-            <PageGrid
-              pages={loadedPdf.pages}
-              settings={settings}
-              onTogglePage={handleTogglePage}
-              onSelectAll={handleSelectAll}
-              onDeselectAll={handleDeselectAll}
-              onSelectFilter={handleSelectFilter}
-              onRotatePage={handleRotatePage}
-              onDownloadPage={handleDownloadPage}
-              onCopyPage={handleCopyPage}
-              onInspectPage={(num) => setInspectPageNumber(num)}
-              copiedPage={copiedPage}
-            />
-
+        {/* 8. ADMIN PANEL VIEW */}
+        {isAdminView && (
+          <div>
+            {user?.role === 'ADMIN' ? (
+              <AdminPanel currentUser={user} />
+            ) : (
+              <div className="bg-white dark:bg-gray-800 rounded-3xl border border-gray-200 dark:border-gray-700 p-12 text-center max-w-md mx-auto space-y-4 shadow-2xs">
+                <AlertCircle className="w-10 h-10 text-red-500 mx-auto" />
+                <h3 className="text-lg font-extrabold text-gray-900 dark:text-white">
+                  Administrator Access Required
+                </h3>
+                <p className="text-xs text-gray-400">
+                  You must be logged in as an administrator to view this page.
+                </p>
+                <button
+                  onClick={() => setAuthModalMode('login')}
+                  className="px-6 py-2.5 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold"
+                >
+                  Sign In with Admin Account
+                </button>
+              </div>
+            )}
           </div>
         )}
 
       </main>
 
-      {/* Floating Bottom ZIP Download Bar */}
-      {loadedPdf && (
+      {/* Floating Bottom ZIP Download Bar (when in PDF to Image view with active document) */}
+      {isPdfToImageView && loadedPdf && (
         <ZipDownloadBar
           selectedCount={selectedCount}
           totalCount={loadedPdf.totalPages}
@@ -600,6 +801,21 @@ export default function App() {
           error={passwordError}
         />
       )}
+
+      {/* Authentication Modal (Sign In / Register / Forgot Password) */}
+      {authModalMode && (
+        <AuthModal
+          initialMode={authModalMode}
+          onClose={() => setAuthModalMode(null)}
+          onSuccess={(loggedInUser) => {
+            setUser(loggedInUser);
+            setAuthModalMode(null);
+          }}
+        />
+      )}
+
+      {/* Global Footer */}
+      <Footer onNavigate={setCurrentRoute} />
 
     </div>
   );

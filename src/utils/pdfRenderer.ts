@@ -230,10 +230,46 @@ export async function renderPageToImage(
   }
 
   // Export to requested format using robust fallback engine
-  const mimeType = isPng ? 'image/png' : 'image/jpeg';
-  const quality = isPng ? undefined : settings.jpegQuality;
+  let mimeType = 'image/png';
+  let quality: number | undefined = undefined;
 
-  const { blob, dataUrl } = await canvasToBlobAndDataUrl(canvas, mimeType, quality);
+  switch (settings.format) {
+    case 'webp':
+      mimeType = 'image/webp';
+      quality = settings.jpegQuality;
+      break;
+    case 'bmp':
+      mimeType = 'image/bmp';
+      break;
+    case 'tiff':
+      mimeType = 'image/tiff';
+      break;
+    case 'svg':
+      mimeType = 'image/png'; // Will be wrapped if svg requested
+      break;
+    case 'jpeg':
+    case 'jpg':
+      mimeType = 'image/jpeg';
+      quality = settings.jpegQuality;
+      break;
+    case 'png':
+    default:
+      mimeType = 'image/png';
+      quality = undefined;
+      break;
+  }
+
+  let { blob, dataUrl } = await canvasToBlobAndDataUrl(canvas, mimeType, quality);
+
+  // SVG wrapping if SVG format is selected
+  if (settings.format === 'svg') {
+    const svgString = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <image width="${width}" height="${height}" xlink:href="${dataUrl}"/>
+</svg>`;
+    blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+    dataUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgString)));
+  }
 
   return {
     blob,

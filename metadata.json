@@ -1,6 +1,6 @@
 {
-  "name": "PDF to High-Res Image Converter",
-  "description": "Convert PDF documents to ultra high-resolution JPG and PNG images (72 to 600+ DPI) with batch processing, quality controls, and instant ZIP download.",
+  "name": "ConvertPro - PDF & Image Converter",
+  "description": "Production-quality online converter for PDF to JPG/PNG/WEBP/TIFF/BMP and Image to PDF, with batch conversion, custom DPI, user dashboard, history, and admin panel.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
