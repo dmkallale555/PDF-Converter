@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   History, 
   Search, 
@@ -10,10 +10,16 @@ import {
   Filter, 
   ArrowUpDown,
   DownloadCloud,
-  FileSpreadsheet
+  FileSpreadsheet,
+  CloudCheck
 } from 'lucide-react';
 import { ConversionRecord, AppRoute } from '../types';
-import { getConversionHistory, deleteConversionRecord, clearUserHistory } from '../utils/historyStorage';
+import { 
+  getConversionHistory, 
+  deleteConversionRecord, 
+  clearUserHistory,
+  subscribeToUserRecords 
+} from '../utils/historyStorage';
 
 interface HistoryViewProps {
   userId?: string;
@@ -26,8 +32,19 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ userId, onNavigate }) 
   const [formatFilter, setFormatFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
+  useEffect(() => {
+    setRecords(getConversionHistory(userId));
+
+    if (userId) {
+      const unsubscribe = subscribeToUserRecords(userId, (liveRecords) => {
+        setRecords(liveRecords);
+      });
+      return () => unsubscribe();
+    }
+  }, [userId]);
+
   const handleDelete = (id: string) => {
-    deleteConversionRecord(id);
+    deleteConversionRecord(id, userId);
     setRecords((prev) => prev.filter((r) => r.id !== id));
   };
 

@@ -19,7 +19,8 @@ import {
   FileCheck,
   Zap,
   Lock,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Check
 } from 'lucide-react';
 import { User, AppRoute, ThemeMode } from '../types';
 
@@ -130,11 +131,12 @@ export const Header: React.FC<HeaderProps> = ({
                     Convert PDF to Images
                   </div>
                   {[
-                    { route: 'pdf-to-jpg', label: 'PDF to JPG', desc: 'Fast & compatible' },
-                    { route: 'pdf-to-png', label: 'PDF to PNG', desc: 'Lossless & transparent' },
-                    { route: 'pdf-to-webp', label: 'PDF to WEBP', desc: 'Modern small size' },
-                    { route: 'pdf-to-tiff', label: 'PDF to TIFF', desc: 'Print & archival' },
-                    { route: 'pdf-to-bmp', label: 'PDF to BMP', desc: 'Raw bitmap format' },
+                    { route: 'pdf-merge', label: 'PDF Merger', desc: 'Combine multiple PDFs into 1', badge: 'New' },
+                    { route: 'pdf-to-jpg', label: 'PDF to JPG', desc: 'Fast & compatible', badge: '600 DPI' },
+                    { route: 'pdf-to-png', label: 'PDF to PNG', desc: 'Lossless & transparent', badge: '600 DPI' },
+                    { route: 'pdf-to-webp', label: 'PDF to WEBP', desc: 'Modern small size', badge: 'Web' },
+                    { route: 'pdf-to-tiff', label: 'PDF to TIFF', desc: 'Print & archival', badge: 'Print' },
+                    { route: 'pdf-to-bmp', label: 'PDF to BMP', desc: 'Raw bitmap format', badge: 'Raw' },
                   ].map((item) => (
                     <button
                       key={item.route}
@@ -146,11 +148,18 @@ export const Header: React.FC<HeaderProps> = ({
                       className="w-full px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700/60 flex items-center justify-between text-xs"
                     >
                       <div>
-                        <div className="font-semibold text-gray-800 dark:text-gray-200">{item.label}</div>
+                        <div className="font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
+                          <span>{item.label}</span>
+                          {item.badge === 'New' && (
+                            <span className="text-[9px] font-extrabold bg-indigo-600 text-white px-1.5 py-0.2 rounded-full">
+                              NEW
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[10px] text-gray-400 dark:text-gray-500">{item.desc}</div>
                       </div>
                       <span className="text-[10px] font-mono text-indigo-500 bg-indigo-50 dark:bg-indigo-950 px-1.5 py-0.5 rounded">
-                        600 DPI
+                        {item.badge}
                       </span>
                     </button>
                   ))}
@@ -303,53 +312,81 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="relative" ref={themeRef}>
             <button
               id="theme-toggle-btn"
+              type="button"
               onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
-              className="p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-700 transition-colors"
-              title="Switch Theme (Light, Dark, System)"
+              className="p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-700 transition-colors flex items-center gap-1 cursor-pointer"
+              title={`Switch Theme (Current: ${theme.charAt(0).toUpperCase() + theme.slice(1)})`}
             >
               {theme === 'dark' ? (
                 <Moon className="w-4 h-4 text-indigo-400" />
               ) : theme === 'light' ? (
                 <Sun className="w-4 h-4 text-amber-500" />
               ) : (
-                <Monitor className="w-4 h-4 text-gray-500" />
+                <Monitor className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
               )}
             </button>
 
             {isThemeMenuOpen && (
-              <div className="absolute right-0 mt-2 w-36 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 py-1 z-50">
+              <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 p-1.5 z-50 animate-in fade-in slide-in-from-top-2 space-y-0.5">
+                <div className="px-2.5 py-1 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+                  Theme Appearance
+                </div>
                 <button
                   id="theme-light-btn"
+                  type="button"
                   onClick={() => {
                     onToggleTheme('light');
                     setIsThemeMenuOpen(false);
                   }}
-                  className="w-full px-3 py-2 text-left text-xs font-semibold hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 text-gray-700 dark:text-gray-200"
+                  className={`w-full px-2.5 py-2 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                    theme === 'light'
+                      ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 font-bold'
+                      : 'hover:bg-gray-50 dark:hover:bg-gray-700/60 text-gray-700 dark:text-gray-200'
+                  }`}
                 >
-                  <Sun className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Light</span>
+                  <span className="flex items-center gap-2">
+                    <Sun className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Light</span>
+                  </span>
+                  {theme === 'light' && <Check className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />}
                 </button>
                 <button
                   id="theme-dark-btn"
+                  type="button"
                   onClick={() => {
                     onToggleTheme('dark');
                     setIsThemeMenuOpen(false);
                   }}
-                  className="w-full px-3 py-2 text-left text-xs font-semibold hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 text-gray-700 dark:text-gray-200"
+                  className={`w-full px-2.5 py-2 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                    theme === 'dark'
+                      ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 font-bold'
+                      : 'hover:bg-gray-50 dark:hover:bg-gray-700/60 text-gray-700 dark:text-gray-200'
+                  }`}
                 >
-                  <Moon className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>Dark</span>
+                  <span className="flex items-center gap-2">
+                    <Moon className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Dark</span>
+                  </span>
+                  {theme === 'dark' && <Check className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />}
                 </button>
                 <button
                   id="theme-system-btn"
+                  type="button"
                   onClick={() => {
                     onToggleTheme('system');
                     setIsThemeMenuOpen(false);
                   }}
-                  className="w-full px-3 py-2 text-left text-xs font-semibold hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 text-gray-700 dark:text-gray-200"
+                  className={`w-full px-2.5 py-2 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                    theme === 'system'
+                      ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 font-bold'
+                      : 'hover:bg-gray-50 dark:hover:bg-gray-700/60 text-gray-700 dark:text-gray-200'
+                  }`}
                 >
-                  <Monitor className="w-3.5 h-3.5 text-gray-500" />
-                  <span>System</span>
+                  <span className="flex items-center gap-2">
+                    <Monitor className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
+                    <span>System Sync</span>
+                  </span>
+                  {theme === 'system' && <Check className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />}
                 </button>
               </div>
             )}
@@ -463,15 +500,17 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex items-center gap-2">
               <button
                 id="header-login-btn"
+                type="button"
                 onClick={() => onOpenAuth('login')}
-                className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
               >
                 Sign In
               </button>
               <button
                 id="header-register-btn"
+                type="button"
                 onClick={() => onOpenAuth('register')}
-                className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-600/20 transition-all"
+                className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-sm shadow-indigo-600/20 hover:shadow-indigo-600/30 transition-all cursor-pointer"
               >
                 Free Sign Up
               </button>
@@ -481,8 +520,9 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Mobile Menu Hamburger */}
           <button
             id="mobile-menu-toggle-btn"
+            type="button"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="lg:hidden p-2 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+            className="lg:hidden p-2 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
           >
             {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
@@ -492,9 +532,43 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Mobile Drawer Menu */}
       {isMobileMenuOpen && (
-        <div className="lg:hidden border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-4 space-y-2 animate-in slide-in-from-top-4">
+        <div className="lg:hidden border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-4 space-y-3 animate-in slide-in-from-top-4">
+          {!user && (
+            <div className="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
+              <button
+                id="mobile-login-btn"
+                type="button"
+                onClick={() => {
+                  onOpenAuth('login');
+                  setIsMobileMenuOpen(false);
+                }}
+                className="flex-1 py-2 rounded-xl text-xs font-bold text-center border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              >
+                Sign In
+              </button>
+              <button
+                id="mobile-register-btn"
+                type="button"
+                onClick={() => {
+                  onOpenAuth('register');
+                  setIsMobileMenuOpen(false);
+                }}
+                className="flex-1 py-2 rounded-xl text-xs font-bold text-center bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-all"
+              >
+                Free Sign Up
+              </button>
+            </div>
+          )}
+
           <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider px-2">PDF Tools</div>
           <div className="grid grid-cols-2 gap-1">
+            <button
+              onClick={() => { onNavigate('pdf-merge'); setIsMobileMenuOpen(false); }}
+              className="p-2 text-left text-xs font-bold rounded-lg bg-indigo-50/50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-between"
+            >
+              <span>PDF Merger</span>
+              <span className="text-[9px] bg-indigo-600 text-white px-1 rounded-sm">NEW</span>
+            </button>
             <button
               onClick={() => { onNavigate('pdf-to-jpg'); setIsMobileMenuOpen(false); }}
               className="p-2 text-left text-xs font-semibold rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-800 dark:text-gray-200"
@@ -546,6 +620,46 @@ export const Header: React.FC<HeaderProps> = ({
               className="p-2 text-left text-xs font-semibold rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-800 dark:text-gray-200"
             >
               History
+            </button>
+          </div>
+
+          <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider px-2 pt-2">Appearance</div>
+          <div className="grid grid-cols-3 gap-1.5 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+            <button
+              type="button"
+              onClick={() => onToggleTheme('light')}
+              className={`py-1.5 px-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                theme === 'light'
+                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                  : 'text-gray-600 dark:text-gray-400'
+              }`}
+            >
+              <Sun className="w-3.5 h-3.5 text-amber-500" />
+              <span>Light</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onToggleTheme('dark')}
+              className={`py-1.5 px-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                theme === 'dark'
+                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                  : 'text-gray-600 dark:text-gray-400'
+              }`}
+            >
+              <Moon className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Dark</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onToggleTheme('system')}
+              className={`py-1.5 px-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                theme === 'system'
+                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                  : 'text-gray-600 dark:text-gray-400'
+              }`}
+            >
+              <Monitor className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
+              <span>System</span>
             </button>
           </div>
         </div>

@@ -27,6 +27,7 @@ export type AppRoute =
   | 'pdf-to-webp'
   | 'pdf-to-tiff'
   | 'pdf-to-bmp'
+  | 'pdf-merge'
   | 'image-to-pdf'
   | 'jpg-to-png'
   | 'png-to-jpg'
@@ -169,6 +170,19 @@ export interface BatchFileItem {
   outputFilename?: string;
   pageCount?: number;
   previewUrl?: string;
+}
+
+export interface MergePdfFileItem {
+  id: string;
+  file?: File;
+  data: ArrayBuffer;
+  name: string;
+  size: number;
+  pageCount: number;
+  thumbnailUrl?: string;
+  pageRange: string; // e.g. 'all' or '1-3, 5'
+  isValid: boolean;
+  errorMessage?: string;
 }
 
 export interface SystemConfig {

@@ -1,0 +1,92 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'dmkallale555@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+        data.email is string && data.email.size() <= 254 &&
+        data.role in ['USER', 'ADMIN'] &&
+        data.status in ['active', 'disabled'] &&
+        data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
+    function isValidRecord(data) {
+      return data.id is string && data.id.size() <= 128 &&
+        data.userId is string && data.userId.size() <= 128 &&
+        data.originalFilename is string && data.originalFilename.size() <= 255 &&
+        data.inputFormat is string && data.inputFormat.size() <= 20 &&
+        data.outputFormat is string && data.outputFormat.size() <= 20 &&
+        data.status in ['completed', 'failed', 'processing'] &&
+        data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
+    // Health probe testing
+    match /test/{testId} {
+      allow read: if true;
+    }
+
+    // Global system config
+    match /system_config/{configId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Admins registry
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && isSignedIn() && (request.auth.uid == adminId || isAdmin());
+      allow list, write: if isAdmin();
+    }
+
+    // User accounts
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow create: if isValidId(userId) && isOwner(userId) && isValidUserProfile(incoming());
+      allow update: if isValidId(userId) && isOwner(userId) && isValidUserProfile(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'avatar', 'lastLogin', 'preferences', 'updatedAt']);
+      allow delete: if isValidId(userId) && (isOwner(userId) || isAdmin());
+
+      // User Conversion & Merge History Subcollection
+      match /records/{recordId} {
+        allow get: if isValidId(recordId) && (isOwner(userId) || isAdmin());
+        allow list: if isOwner(userId);
+        allow create: if isValidId(recordId) && isOwner(userId) && isValidRecord(incoming());
+        allow update: if isValidId(recordId) && isOwner(userId) && isValidRecord(incoming()) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'outputSize', 'downloadFilename']);
+        allow delete: if isValidId(recordId) && (isOwner(userId) || isAdmin());
+      }
+    }
+  }
+}

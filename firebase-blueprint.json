@@ -1,0 +1,84 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile document storing personal settings, preferences, and account metadata.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "maxLength": 254 },
+        "role": { "type": "string", "enum": ["USER", "ADMIN"] },
+        "avatar": { "type": "string", "maxLength": 2048 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "lastLogin": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "enum": ["active", "disabled"] },
+        "preferences": {
+          "type": "object",
+          "properties": {
+            "defaultFormat": { "type": "string", "maxLength": 10 },
+            "defaultDpi": { "type": "number" },
+            "defaultQuality": { "type": "number" },
+            "theme": { "type": "string", "enum": ["light", "dark", "system"] },
+            "autoDownloadZip": { "type": "boolean" }
+          }
+        }
+      },
+      "required": ["userId", "email", "role", "status", "createdAt"]
+    },
+    "ConversionRecord": {
+      "title": "ConversionRecord",
+      "description": "Historical record of an individual file conversion or merge event.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "originalFilename": { "type": "string", "maxLength": 255 },
+        "inputFormat": { "type": "string", "maxLength": 20 },
+        "outputFormat": { "type": "string", "maxLength": 20 },
+        "inputSize": { "type": "number" },
+        "outputSize": { "type": "number" },
+        "pageCount": { "type": "number" },
+        "dpi": { "type": "number" },
+        "quality": { "type": "number" },
+        "status": { "type": "string", "enum": ["completed", "failed", "processing"] },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "downloadFilename": { "type": "string", "maxLength": 255 }
+      },
+      "required": ["id", "userId", "originalFilename", "inputFormat", "outputFormat", "status", "createdAt"]
+    },
+    "SystemConfig": {
+      "title": "SystemConfig",
+      "description": "Global application configuration for file upload limits and DPI presets.",
+      "type": "object",
+      "properties": {
+        "maxFileSizeMb": { "type": "number" },
+        "maxBatchFiles": { "type": "number" },
+        "maxPagesPerPdf": { "type": "number" },
+        "maxDpi": { "type": "number" },
+        "retentionHours": { "type": "number" },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile with role, display info, and preferences"
+    },
+    "/users/{userId}/records/{recordId}": {
+      "schema": "ConversionRecord",
+      "description": "Conversion and merge action history items specific to a user"
+    },
+    "/admins/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "Admin authorization registry document"
+    },
+    "/system_config/{configId}": {
+      "schema": "SystemConfig",
+      "description": "Global application operational settings"
+    }
+  }
+}

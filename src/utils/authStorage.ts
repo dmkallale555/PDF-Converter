@@ -1,4 +1,13 @@
 import { User, AuthSession, SystemConfig, UserPreferences } from '../types';
+import { 
+  db, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  handleFirestoreError, 
+  OperationType,
+  signOutFirebase
+} from '../firebase';
 
 const USERS_KEY = 'convertpro_users_v1';
 const SESSION_KEY = 'convertpro_session_v1';
@@ -27,7 +36,7 @@ const INITIAL_USERS: User[] = [
     id: 'user_admin_001',
     name: 'Sarah Connor (Admin)',
     email: 'admin@convertpro.com',
-    passwordHash: 'Admin@1234', // hashed/checked securely
+    passwordHash: 'Admin@1234',
     role: 'ADMIN',
     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
     createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -96,7 +105,6 @@ export function getStoredSession(): AuthSession | null {
       localStorage.removeItem(SESSION_KEY);
       return null;
     }
-    // Verify user is still active
     const users = getUsers();
     const current = users.find((u) => u.id === session.user.id);
     if (!current || current.status === 'disabled') {
@@ -116,6 +124,7 @@ export function getCurrentUser(): User | null {
 
 export function logoutUser(): void {
   clearSession();
+  signOutFirebase().catch(() => {});
 }
 
 export function saveSession(session: AuthSession): void {
@@ -126,6 +135,79 @@ export function clearSession(): void {
   localStorage.removeItem(SESSION_KEY);
 }
 
+/**
+ * Sync user profile to Firestore
+ */
+export async function syncUserProfileToFirestore(user: User): Promise<void> {
+  const path = `users/${user.id}`;
+  try {
+    const payload = {
+      userId: user.id.slice(0, 128),
+      name: (user.name || 'User').slice(0, 100),
+      email: (user.email || '').slice(0, 254),
+      role: user.role || 'USER',
+      avatar: (user.avatar || '').slice(0, 2048),
+      createdAt: user.createdAt || new Date().toISOString(),
+      lastLogin: new Date().toISOString(),
+      status: user.status || 'active',
+      preferences: user.preferences || DEFAULT_PREFERENCES,
+    };
+    await setDoc(doc(db, 'users', user.id), payload, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+/**
+ * Handle Firebase Google Sign-In user
+ */
+export async function handleFirebaseGoogleAuth(fbUser: any): Promise<AuthSession> {
+  const users = getUsers();
+  const email = (fbUser.email || '').toLowerCase();
+  const isBootstrapAdmin = email === 'dmkallale555@gmail.com' || email === 'admin@convertpro.com';
+
+  let existing = users.find((u) => u.email.toLowerCase() === email || u.id === fbUser.uid);
+  
+  if (!existing) {
+    existing = {
+      id: fbUser.uid,
+      name: fbUser.displayName || 'Google User',
+      email: email,
+      role: isBootstrapAdmin ? 'ADMIN' : 'USER',
+      avatar: fbUser.photoURL || undefined,
+      createdAt: new Date().toISOString(),
+      lastLogin: new Date().toISOString(),
+      status: 'active',
+      preferences: DEFAULT_PREFERENCES,
+    };
+    users.push(existing);
+  } else {
+    existing.id = fbUser.uid;
+    existing.lastLogin = new Date().toISOString();
+    if (isBootstrapAdmin) existing.role = 'ADMIN';
+    if (fbUser.photoURL && !existing.avatar) existing.avatar = fbUser.photoURL;
+    if (fbUser.displayName && !existing.name) existing.name = fbUser.displayName;
+  }
+
+  saveUsers(users);
+
+  // Sync to Firestore
+  try {
+    await syncUserProfileToFirestore(existing);
+  } catch (e) {
+    console.warn('Could not sync Google user to Firestore:', e);
+  }
+
+  const session: AuthSession = {
+    token: 'fb_token_' + fbUser.uid,
+    user: existing,
+    expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
+  };
+
+  saveSession(session);
+  return session;
+}
+
 export function registerUser(name: string, email: string, password: string): { success: boolean; error?: string; user?: User } {
   const users = getUsers();
   const normalizedEmail = email.trim().toLowerCase();
@@ -134,12 +216,14 @@ export function registerUser(name: string, email: string, password: string): { s
     return { success: false, error: 'An account with this email already exists.' };
   }
 
+  const isBootstrapAdmin = normalizedEmail === 'dmkallale555@gmail.com' || normalizedEmail === 'admin@convertpro.com';
+
   const newUser: User = {
-    id: 'user_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+    id: 'usr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
     name: name.trim(),
     email: normalizedEmail,
     passwordHash: password,
-    role: 'USER',
+    role: isBootstrapAdmin ? 'ADMIN' : 'USER',
     createdAt: new Date().toISOString(),
     lastLogin: new Date().toISOString(),
     status: 'active',
@@ -148,6 +232,9 @@ export function registerUser(name: string, email: string, password: string): { s
 
   users.push(newUser);
   saveUsers(users);
+
+  // Attempt Firestore sync
+  syncUserProfileToFirestore(newUser).catch(() => {});
 
   return { success: true, user: newUser };
 }
@@ -169,7 +256,6 @@ export function loginUser(email: string, password: string, rememberMe = true): {
     return { success: false, error: 'Invalid email address or password.' };
   }
 
-  // Update last login
   user.lastLogin = new Date().toISOString();
   saveUsers(users);
 
@@ -181,6 +267,8 @@ export function loginUser(email: string, password: string, rememberMe = true): {
   };
 
   saveSession(session);
+  syncUserProfileToFirestore(user).catch(() => {});
+
   return { success: true, session };
 }
 
@@ -199,7 +287,7 @@ export function requestPasswordReset(email: string): { success: boolean; token?:
 
   resetTokens[token] = {
     email: user.email,
-    expiresAt: Date.now() + 60 * 60 * 1000, // 1 hour
+    expiresAt: Date.now() + 60 * 60 * 1000,
   };
 
   localStorage.setItem(RESET_TOKENS_KEY, JSON.stringify(resetTokens));
@@ -242,11 +330,12 @@ export function updateUserProfile(userId: string, updates: Partial<User>): { suc
   };
   saveUsers(users);
 
-  // If currently active session is this user, update it
   const session = getStoredSession();
   if (session && session.user.id === userId) {
     saveSession({ ...session, user: users[idx] });
   }
+
+  syncUserProfileToFirestore(users[idx]).catch(() => {});
 
   return { success: true, user: users[idx] };
 }

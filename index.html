@@ -9,6 +9,28 @@
     <meta property="og:description" content="Convert PDF documents to ultra high-resolution JPG and PNG images (72 to 600+ DPI) with batch processing, quality controls, and instant ZIP download." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      (function() {
+        try {
+          var storedTheme = localStorage.getItem('convertpro_theme') || 'system';
+          var isDark = false;
+          if (storedTheme === 'dark') {
+            isDark = true;
+          } else if (storedTheme === 'light') {
+            isDark = false;
+          } else {
+            isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          }
+          if (isDark) {
+            document.documentElement.classList.add('dark');
+            document.documentElement.style.colorScheme = 'dark';
+          } else {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.style.colorScheme = 'light';
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

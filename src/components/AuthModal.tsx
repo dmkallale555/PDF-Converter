@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Mail, 
@@ -11,27 +11,33 @@ import {
   ShieldCheck, 
   Zap, 
   ArrowRight,
-  Sparkles
+  Sparkles,
+  LogIn,
+  UserPlus
 } from 'lucide-react';
 import { 
   loginUser, 
   registerUser, 
   requestPasswordReset, 
-  resetPasswordWithToken 
+  resetPasswordWithToken,
+  handleFirebaseGoogleAuth
 } from '../utils/authStorage';
+import { signInWithGoogle } from '../firebase';
 import { User, AuthSession } from '../types';
 
 interface AuthModalProps {
-  isOpen: boolean;
+  isOpen?: boolean;
   onClose: () => void;
-  initialMode?: 'login' | 'register' | 'forgot-password';
-  onAuthSuccess: (session: AuthSession) => void;
+  initialMode?: 'login' | 'register' | 'forgot-password' | 'reset-password';
+  onSuccess?: (user: User) => void;
+  onAuthSuccess?: (session: AuthSession) => void;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
-  isOpen,
+  isOpen = true,
   onClose,
   initialMode = 'login',
+  onSuccess,
   onAuthSuccess,
 }) => {
   const [mode, setMode] = useState<'login' | 'register' | 'forgot-password' | 'reset-password'>(initialMode);
@@ -54,7 +60,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [success, setSuccess] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Sync mode when initialMode changes
+  useEffect(() => {
+    if (initialMode) {
+      setMode(initialMode);
+      setError(null);
+    }
+  }, [initialMode]);
+
   if (!isOpen) return null;
+
+  const handleSuccessfulAuth = (session: AuthSession) => {
+    if (onAuthSuccess) {
+      onAuthSuccess(session);
+    }
+    if (onSuccess) {
+      onSuccess(session.user);
+    }
+    onClose();
+  };
 
   // Calculate password strength
   const getPasswordStrength = (pwd: string) => {
@@ -100,8 +124,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         return;
       }
 
-      onAuthSuccess(res.session);
-      onClose();
+      handleSuccessfulAuth(res.session);
     }, 400);
   };
 
@@ -143,9 +166,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const loginRes = loginUser(email, password, true);
       setIsLoading(false);
       if (loginRes.session) {
-        onAuthSuccess(loginRes.session);
+        handleSuccessfulAuth(loginRes.session);
+      } else {
+        onClose();
       }
-      onClose();
     }, 500);
   };
 
@@ -207,6 +231,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }, 500);
   };
 
+  const handleGoogleLogin = async () => {
+    setError(null);
+    setIsLoading(true);
+    try {
+      const res = await signInWithGoogle();
+      if (!res.success || !res.user) {
+        setError(res.error || 'Google Sign-In was cancelled or failed.');
+        setIsLoading(false);
+        return;
+      }
+      const session = await handleFirebaseGoogleAuth(res.user);
+      setIsLoading(false);
+      handleSuccessfulAuth(session);
+    } catch (err: any) {
+      console.error('Google Sign In failed:', err);
+      setError(err?.message || 'Failed to sign in with Google');
+      setIsLoading(false);
+    }
+  };
+
   const handleQuickDemoLogin = (demoRole: 'ADMIN' | 'USER') => {
     setError(null);
     setIsLoading(true);
@@ -216,8 +260,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const res = loginUser(emailToUse, pwdToUse, true);
       setIsLoading(false);
       if (res.session) {
-        onAuthSuccess(res.session);
-        onClose();
+        handleSuccessfulAuth(res.session);
       } else {
         setError(res.error || 'Demo login failed');
       }
@@ -242,7 +285,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 {mode === 'reset-password' && 'Enter New Password'}
               </h3>
               <p className="text-xs text-gray-400 dark:text-gray-500 font-medium">
-                {mode === 'login' && 'Access your conversion history & high-DPI presets'}
+                {mode === 'login' && 'Access conversion history & high-DPI presets'}
                 {mode === 'register' && 'No credit card required • 100% Free forever'}
                 {mode === 'forgot-password' && "We'll verify your email and provide a reset link"}
                 {mode === 'reset-password' && 'Choose a secure new password for your account'}
@@ -252,25 +295,64 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <button
             id="auth-modal-close-btn"
             onClick={onClose}
-            className="p-1.5 rounded-full text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="p-1.5 rounded-full text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Quick Demo Login Bar for Testing */}
+        {/* Dual Mode Switcher Tabs (Sign In / Free Sign Up) */}
+        {(mode === 'login' || mode === 'register') && (
+          <div className="p-2 bg-gray-50 dark:bg-gray-900/60 border-b border-gray-100 dark:border-gray-700/60 grid grid-cols-2 gap-1.5 px-6">
+            <button
+              id="auth-tab-signin-btn"
+              type="button"
+              onClick={() => {
+                setMode('login');
+                setError(null);
+              }}
+              className={`py-2 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                mode === 'login'
+                  ? 'bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-2xs border border-gray-200/80 dark:border-gray-700'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+              }`}
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Sign In</span>
+            </button>
+
+            <button
+              id="auth-tab-signup-btn"
+              type="button"
+              onClick={() => {
+                setMode('register');
+                setError(null);
+              }}
+              className={`py-2 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                mode === 'register'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+              }`}
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Free Sign Up</span>
+            </button>
+          </div>
+        )}
+
+        {/* Quick Demo Login Bar for Instant Testing */}
         {(mode === 'login' || mode === 'register') && (
           <div className="bg-indigo-50/70 dark:bg-indigo-950/40 px-6 py-2.5 border-b border-indigo-100 dark:border-indigo-900/60 flex items-center justify-between">
             <span className="text-[11px] font-bold text-indigo-900 dark:text-indigo-200 flex items-center gap-1">
               <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              Quick Test:
+              Instant Demo:
             </span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 id="demo-user-login-btn"
                 onClick={() => handleQuickDemoLogin('USER')}
-                className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white dark:bg-gray-800 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700 hover:bg-indigo-100 transition-colors shadow-2xs"
+                className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white dark:bg-gray-800 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700 hover:bg-indigo-100 dark:hover:bg-gray-700 transition-colors shadow-2xs cursor-pointer"
               >
                 Demo User
               </button>
@@ -278,7 +360,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 type="button"
                 id="demo-admin-login-btn"
                 onClick={() => handleQuickDemoLogin('ADMIN')}
-                className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-purple-600 text-white hover:bg-purple-700 transition-colors shadow-2xs"
+                className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-purple-600 text-white hover:bg-purple-700 transition-colors shadow-2xs cursor-pointer"
               >
                 Admin Panel
               </button>
@@ -302,6 +384,45 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
               <span>{resetSuccessMessage || success}</span>
+            </div>
+          )}
+
+          {/* Firebase Google Auth Button */}
+          {(mode === 'login' || mode === 'register') && (
+            <div className="space-y-3">
+              <button
+                type="button"
+                id="google-signin-btn"
+                disabled={isLoading}
+                onClick={handleGoogleLogin}
+                className="w-full py-2.5 px-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 font-bold text-xs shadow-2xs transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-60"
+              >
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  />
+                </svg>
+                <span>Continue with Google</span>
+              </button>
+
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-gray-100 dark:bg-gray-700"></div>
+                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">or with email</span>
+                <div className="flex-1 h-px bg-gray-100 dark:bg-gray-700"></div>
+              </div>
             </div>
           )}
 
@@ -337,7 +458,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       setMode('forgot-password');
                       setError(null);
                     }}
-                    className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                    className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
                   >
                     Forgot Password?
                   </button>
@@ -356,7 +477,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -382,7 +503,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 type="submit"
                 id="login-submit-btn"
                 disabled={isLoading}
-                className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
               >
                 {isLoading ? 'Signing In...' : 'Sign In'}
                 <ArrowRight className="w-4 h-4" />
@@ -447,7 +568,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -505,7 +626,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 type="submit"
                 id="register-submit-btn"
                 disabled={isLoading}
-                className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
               >
                 {isLoading ? 'Creating Account...' : 'Create Free Account'}
                 <ArrowRight className="w-4 h-4" />
@@ -538,7 +659,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 type="submit"
                 id="forgot-submit-btn"
                 disabled={isLoading}
-                className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
               >
                 {isLoading ? 'Sending Reset Token...' : 'Generate Reset Token'}
                 <ArrowRight className="w-4 h-4" />
@@ -598,7 +719,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 type="submit"
                 id="reset-submit-btn"
                 disabled={isLoading}
-                className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
               >
                 {isLoading ? 'Updating Password...' : 'Save New Password & Login'}
                 <ArrowRight className="w-4 h-4" />
@@ -619,7 +740,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   setMode('register');
                   setError(null);
                 }}
-                className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+                className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
               >
                 Sign up free
               </button>
@@ -633,7 +754,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   setMode('login');
                   setError(null);
                 }}
-                className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+                className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
               >
                 Sign in
               </button>

@@ -9,13 +9,16 @@ import {
   Image as ImageIcon, 
   ArrowRightLeft, 
   FileCheck,
-  CheckCircle2
+  CheckCircle2,
+  Lock
 } from 'lucide-react';
 import { AppRoute } from '../types';
 
 interface ToolsTabBarProps {
   currentRoute: AppRoute;
   onNavigate: (route: AppRoute) => void;
+  isLoggedIn?: boolean;
+  onOpenAuth?: (mode: 'login' | 'register') => void;
 }
 
 interface ToolDef {
@@ -26,7 +29,12 @@ interface ToolDef {
   desc: string;
 }
 
-export const ToolsTabBar: React.FC<ToolsTabBarProps> = ({ currentRoute, onNavigate }) => {
+export const ToolsTabBar: React.FC<ToolsTabBarProps> = ({ 
+  currentRoute, 
+  onNavigate,
+  isLoggedIn = false,
+  onOpenAuth,
+}) => {
   const pdfTools: ToolDef[] = [
     {
       route: 'pdf-to-jpg',
@@ -62,6 +70,13 @@ export const ToolsTabBar: React.FC<ToolsTabBarProps> = ({ currentRoute, onNaviga
       badge: 'Bitmap',
       icon: Grid,
       desc: 'Raw uncompressed raster bitmap',
+    },
+    {
+      route: 'pdf-merge',
+      name: 'PDF Merger',
+      badge: 'Combine',
+      icon: Layers,
+      desc: 'Merge multiple PDF files into one',
     },
   ];
 
@@ -156,6 +171,9 @@ export const ToolsTabBar: React.FC<ToolsTabBarProps> = ({ currentRoute, onNaviga
                   <div>
                     <div className="font-extrabold text-xs tracking-tight flex items-center gap-1">
                       <span>{tool.name}</span>
+                      {!isLoggedIn && (
+                        <Lock className="w-2.5 h-2.5 opacity-60 text-amber-500 shrink-0" />
+                      )}
                     </div>
                     <div className={`text-[10px] leading-tight mt-0.5 line-clamp-1 ${
                       active ? 'text-indigo-100' : 'text-gray-400 dark:text-gray-500'
@@ -212,6 +230,9 @@ export const ToolsTabBar: React.FC<ToolsTabBarProps> = ({ currentRoute, onNaviga
                   <div>
                     <div className="font-extrabold text-xs tracking-tight flex items-center gap-1">
                       <span>{tool.name}</span>
+                      {!isLoggedIn && (
+                        <Lock className="w-2.5 h-2.5 opacity-60 text-amber-500 shrink-0" />
+                      )}
                     </div>
                     <div className={`text-[10px] leading-tight mt-0.5 line-clamp-1 ${
                       active ? 'text-violet-100' : 'text-gray-400 dark:text-gray-500'

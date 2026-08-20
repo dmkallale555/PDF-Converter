@@ -1,8 +1,21 @@
 import { ConversionRecord } from '../types';
+import { 
+  db, 
+  collection, 
+  doc, 
+  setDoc, 
+  deleteDoc, 
+  query, 
+  orderBy, 
+  limit, 
+  onSnapshot, 
+  handleFirestoreError, 
+  OperationType 
+} from '../firebase';
 
 const HISTORY_KEY = 'convertpro_conversion_history_v1';
 
-// Seed demo conversion history
+// Seed demo conversion history for offline/demo users
 const INITIAL_HISTORY: ConversionRecord[] = [
   {
     id: 'conv_seed_1',
@@ -47,21 +60,6 @@ const INITIAL_HISTORY: ConversionRecord[] = [
     createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
     downloadFilename: 'Marketing_Flyer_Batch.pdf',
   },
-  {
-    id: 'conv_seed_4',
-    userId: 'user_demo_002',
-    originalFilename: 'Product_Packaging_Vector.pdf',
-    inputFormat: 'pdf',
-    outputFormat: 'webp',
-    inputSize: 1850000,
-    outputSize: 920000,
-    pageCount: 2,
-    dpi: 300,
-    quality: 0.9,
-    status: 'completed',
-    createdAt: new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString(),
-    downloadFilename: 'Product_Packaging_Vector_webp_300dpi.zip',
-  },
 ];
 
 export function getConversionHistory(userId?: string): ConversionRecord[] {
@@ -88,15 +86,55 @@ export function addConversionRecord(record: Omit<ConversionRecord, 'id' | 'creat
     createdAt: new Date().toISOString(),
   };
 
-  const updated = [newRecord, ...history].slice(0, 100); // keep last 100
+  const updated = [newRecord, ...history].slice(0, 100);
   localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+
+  // If user is a real logged-in Firebase user, also persist to Firestore
+  if (record.userId && record.userId !== 'anonymous' && !record.userId.startsWith('user_demo_') && !record.userId.startsWith('user_admin_')) {
+    saveRecordToFirestore(record.userId, newRecord).catch((err) => {
+      console.warn('Failed to sync record to Firestore:', err);
+    });
+  }
+
   return newRecord;
 }
 
-export function deleteConversionRecord(id: string): void {
+export async function saveRecordToFirestore(userId: string, record: ConversionRecord): Promise<void> {
+  const path = `users/${userId}/records/${record.id}`;
+  try {
+    // Sanitize values for Firestore payload constraints
+    const firestorePayload = {
+      id: String(record.id).slice(0, 128),
+      userId: String(userId).slice(0, 128),
+      originalFilename: String(record.originalFilename || 'document').slice(0, 255),
+      inputFormat: String(record.inputFormat || 'pdf').slice(0, 20),
+      outputFormat: String(record.outputFormat || 'png').slice(0, 20),
+      inputSize: Number(record.inputSize) || 0,
+      outputSize: Number(record.outputSize) || 0,
+      pageCount: Number(record.pageCount) || 1,
+      dpi: Number(record.dpi) || 300,
+      quality: Number(record.quality) || 1,
+      status: record.status || 'completed',
+      createdAt: String(record.createdAt || new Date().toISOString()).slice(0, 64),
+      downloadFilename: String(record.downloadFilename || '').slice(0, 255),
+    };
+    await setDoc(doc(db, 'users', userId, 'records', record.id), firestorePayload);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+}
+
+export function deleteConversionRecord(id: string, userId?: string): void {
   const history = getConversionHistory();
   const updated = history.filter((r) => r.id !== id);
   localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+
+  if (userId && userId !== 'anonymous' && !userId.startsWith('user_demo_') && !userId.startsWith('user_admin_')) {
+    const path = `users/${userId}/records/${id}`;
+    deleteDoc(doc(db, 'users', userId, 'records', id)).catch((error) => {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    });
+  }
 }
 
 export function clearUserHistory(userId?: string): void {
@@ -107,6 +145,49 @@ export function clearUserHistory(userId?: string): void {
   const history = getConversionHistory();
   const updated = history.filter((r) => r.userId !== userId);
   localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+}
+
+/**
+ * Real-time listener for Firestore conversion records
+ */
+export function subscribeToUserRecords(
+  userId: string, 
+  onRecordsUpdated: (records: ConversionRecord[]) => void
+): () => void {
+  if (!userId || userId === 'anonymous' || userId.startsWith('user_demo_') || userId.startsWith('user_admin_')) {
+    return () => {};
+  }
+
+  const collectionPath = `users/${userId}/records`;
+  try {
+    const recordsQuery = query(
+      collection(db, 'users', userId, 'records'),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    );
+
+    const unsubscribe = onSnapshot(
+      recordsQuery,
+      (snapshot) => {
+        const records: ConversionRecord[] = [];
+        snapshot.forEach((docSnap) => {
+          records.push(docSnap.data() as ConversionRecord);
+        });
+        if (records.length > 0) {
+          onRecordsUpdated(records);
+          // Also update local storage cache
+          localStorage.setItem(HISTORY_KEY, JSON.stringify(records));
+        }
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, collectionPath);
+      }
+    );
+
+    return unsubscribe;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, collectionPath);
+  }
 }
 
 export function getHistoryStats(userId?: string) {
