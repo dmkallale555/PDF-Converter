@@ -22,6 +22,7 @@ import { convertImagesToPdf } from '../utils/imageToPdf';
 import { downloadFile } from '../utils/pdfRenderer';
 
 interface ImageToPdfConverterProps {
+  mode?: 'image-to-pdf' | 'jpg-to-pdf' | 'png-to-pdf';
   onConversionComplete: (record: {
     originalFilename: string;
     inputFormat: string;
@@ -43,15 +44,44 @@ const DEFAULT_SETTINGS: ImageToPdfSettings = {
   outputFilename: 'ConvertPro_Compiled_Images.pdf',
 };
 
-export const ImageToPdfConverter: React.FC<ImageToPdfConverterProps> = ({ onConversionComplete }) => {
+export const ImageToPdfConverter: React.FC<ImageToPdfConverterProps> = ({ mode = 'image-to-pdf', onConversionComplete }) => {
   const [images, setImages] = useState<ImageItem[]>([]);
-  const [settings, setSettings] = useState<ImageToPdfSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<ImageToPdfSettings>(() => ({
+    ...DEFAULT_SETTINGS,
+    outputFilename: mode === 'jpg-to-pdf' ? 'ConvertPro_JPG_Compiled.pdf' : mode === 'png-to-pdf' ? 'ConvertPro_PNG_Compiled.pdf' : 'ConvertPro_Images.pdf'
+  }));
   const [isProcessing, setIsProcessing] = useState(false);
   const [progressStatus, setProgressStatus] = useState<{ current: number; total: number; message: string } | null>(null);
   const [generatedPdf, setGeneratedPdf] = useState<{ blob: Blob; url: string; filename: string; size: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const getModeInfo = () => {
+    switch (mode) {
+      case 'jpg-to-pdf':
+        return {
+          title: 'JPG to PDF Converter',
+          subtitle: 'Convert and combine your JPEG / JPG photos into clean, high-resolution PDF documents.',
+          accept: 'image/jpeg, image/jpg',
+        };
+      case 'png-to-pdf':
+        return {
+          title: 'PNG to PDF Converter',
+          subtitle: 'Convert transparent and sharp PNG graphics into standard vector-friendly PDF files.',
+          accept: 'image/png',
+        };
+      case 'image-to-pdf':
+      default:
+        return {
+          title: 'Image to PDF (Multi-Page)',
+          subtitle: 'Drag & drop multiple JPG, PNG, WEBP, BMP, SVG, TIFF images to combine into an organized multi-page PDF document.',
+          accept: 'image/png, image/jpeg, image/jpg, image/webp, image/bmp, image/svg+xml, image/gif, image/tiff',
+        };
+    }
+  };
+
+  const modeInfo = getModeInfo();
 
   const handleFilesSelected = (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -195,7 +225,7 @@ export const ImageToPdfConverter: React.FC<ImageToPdfConverterProps> = ({ onConv
           ref={fileInputRef}
           type="file"
           multiple
-          accept="image/png, image/jpeg, image/jpg, image/webp, image/bmp, image/svg+xml, image/gif, image/tiff"
+          accept={modeInfo.accept}
           className="hidden"
           onChange={(e) => handleFilesSelected(e.target.files)}
         />
@@ -205,10 +235,10 @@ export const ImageToPdfConverter: React.FC<ImageToPdfConverterProps> = ({ onConv
         </div>
 
         <h3 className="text-lg font-extrabold text-gray-900 dark:text-white mb-1">
-          Upload Images to Convert to PDF
+          {modeInfo.title}
         </h3>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-5 max-w-md mx-auto">
-          Drag & drop your JPG, PNG, WEBP, BMP, SVG, TIFF images here, or browse from your computer. Select multiple files to merge them into a single multi-page PDF.
+          {modeInfo.subtitle}
         </p>
 
         <button

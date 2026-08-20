@@ -31,6 +31,7 @@ import { UserDashboard } from './components/UserDashboard';
 import { HistoryView } from './components/HistoryView';
 import { AccountSettings } from './components/AccountSettings';
 import { AdminPanel } from './components/AdminPanel';
+import { ToolsTabBar } from './components/ToolsTabBar';
 
 import { 
   ConversionSettings, 
@@ -499,6 +500,9 @@ export default function App() {
       {/* Main App Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
+        {/* Universal Active Tools Tab Bar */}
+        <ToolsTabBar currentRoute={currentRoute} onNavigate={setCurrentRoute} />
+
         {/* Global Error Banner */}
         {globalError && (
           <div className="mb-6 p-4 rounded-2xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-900 dark:text-red-200 text-sm flex items-start gap-3 shadow-xs">
@@ -518,6 +522,7 @@ export default function App() {
                 onFileLoaded={(file, buffer) => handleLoadPdf(file.name, buffer)}
                 onLoadSample={handleLoadSample}
                 isLoading={isLoadingPdf}
+                activeRoute={currentRoute}
               />
             ) : (
               <div className="space-y-6">
@@ -650,7 +655,10 @@ export default function App() {
 
         {/* 2. IMAGE TO PDF CONVERTER VIEW */}
         {isImageToPdfView && (
-          <ImageToPdfConverter onConversionComplete={handleExternalConversionComplete} />
+          <ImageToPdfConverter
+            mode={currentRoute === 'jpg-to-pdf' ? 'jpg-to-pdf' : currentRoute === 'png-to-pdf' ? 'png-to-pdf' : 'image-to-pdf'}
+            onConversionComplete={handleExternalConversionComplete}
+          />
         )}
 
         {/* 3. IMAGE TO IMAGE CONVERTER VIEW */}
@@ -815,7 +823,11 @@ export default function App() {
       )}
 
       {/* Global Footer */}
-      <Footer onNavigate={setCurrentRoute} />
+      <Footer
+        onNavigate={setCurrentRoute}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
+      />
 
     </div>
   );
